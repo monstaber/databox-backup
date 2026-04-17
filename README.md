@@ -7,6 +7,8 @@ GitHub Actions workflow pulls new/changed messages from ISDS and stores them
 Built to replace the paid *Datový trezor* (120-29 500 CZK/year) with a free,
 private, indefinitely-running archive that the user operates themselves.
 
+**No data is retained** outside of the Google Drive folder you configure.
+
 ## What gets archived
 
 For every message in your schránka, sent or received, within the last ~95 days:
