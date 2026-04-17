@@ -42,6 +42,26 @@ For every message in your schránka, sent or received, within the last ~95 days:
 - `_state/index.json` - the archiver's own state file (which dmIDs are done,
   which are still settling).
 
+## Costs
+
+To run this yourself you need your own **private** copy of the repo (see the
+note below the table). On that copy you configure 7 Actions secrets and the
+scheduled workflow runs there at zero ongoing cost:
+
+| Item | Annual cost |
+|---|---|
+| ISDS API | 0 CZK |
+| GitHub Actions (your own private copy of this repo with your 7 secrets; ~240-720 min/mo of 2 000 free) | 0 CZK |
+| Google Drive (15 GB free; usage typically < 1 GB / year) | 0 CZK |
+| Google Cloud (OAuth issuance only; no billable APIs) | 0 CZK |
+| **Total** | **0 CZK / year** |
+
+GitHub does not allow a direct *Fork* from a public repo into a private one.
+Use either: (a) the **Use this template** button on this repo (if the owner
+has enabled template mode) and choose *Private* visibility when creating your
+copy, or (b) `git clone` this repo and push the history into a new private
+repo you create in your own account.
+
 ## Architecture
 
 ```
@@ -170,16 +190,6 @@ npm run verify       # build + lint + test + audit, in one shot
 `.env.local` is read automatically by `src/config.ts` for local runs -
 `npm start` after `npm run build` will fire one run against production ISDS
 and a test Drive folder if you configured one.
-
-## Costs
-
-| Item | Annual cost |
-|---|---|
-| ISDS API | 0 CZK |
-| GitHub Actions (private repo, ~240-720 min/mo used of 2 000 free) | 0 CZK |
-| Google Drive (15 GB free; usage typically < 1 GB/year) | 0 CZK |
-| Google Cloud (OAuth issuance only; no billable APIs) | 0 CZK |
-| **Total** | **0 CZK / year** |
 
 ## Known risks
 
