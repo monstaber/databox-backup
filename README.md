@@ -4,10 +4,25 @@ Personal archiver for the Czech **datová schránka** (ISDS). Every 3 hours a
 GitHub Actions workflow pulls new/changed messages from ISDS and stores them
 (as signed ZFO + signed doručenka + a manifest sidecar) in Google Drive.
 
-Built to replace the paid *Datový trezor* (120-29 500 CZK/year) with a free,
-private, indefinitely-running archive that the user operates themselves.
+![Diagram: signed messages with attachments in ZFO format and signed delivery history sync from datové schránky into Google Drive](docs/sync.png)
 
 **No data is retained** outside of the Google Drive folder you configure.
+
+## Why this exists
+
+- **ISDS deletes your messages after 90 days.** Once gone, you lose the ability
+  to prove delivery or reconstruct contents unless you pay for the official
+  *Datový trezor* (120-29 500 CZK / year depending on message volume). This
+  archiver is a free, indefinitely-running alternative that you operate
+  yourself.
+- **The free Portál občana archive is not a full substitute.** Its
+  configurable backup omits doručenky and other envelope metadata, so you keep
+  the body of a message but lose the legally-valid proof of when and how it
+  was delivered.
+- **ZFO files are portable and legally actionable.** Any archived ZFO can be
+  re-uploaded into the datová schránka UI (or opened in Datovka desktop) to
+  view the full signed message with all attachments, at any time - even years
+  after ISDS would have deleted it from your schránka.
 
 ## What gets archived
 
