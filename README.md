@@ -57,10 +57,9 @@ scheduled workflow runs there at zero ongoing cost:
 | **Total** | **0 CZK / year** |
 
 GitHub does not allow a direct *Fork* from a public repo into a private one.
-Use either: (a) the **Use this template** button on this repo (if the owner
-has enabled template mode) and choose *Private* visibility when creating your
-copy, or (b) `git clone` this repo and push the history into a new private
-repo you create in your own account.
+Use either: (a) the **Use this template** button on this repo and choose
+*Private* visibility when creating your copy, or (b) `git clone` this repo
+and push the history into a new private repo you create in your own account.
 
 ## Architecture
 
