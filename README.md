@@ -22,7 +22,11 @@ GitHub Actions workflow pulls new/changed messages from ISDS and stores them
 - **ZFO files are portable and legally actionable.** Any archived ZFO can be
   re-uploaded into the datová schránka UI (or opened in Datovka desktop) to
   view the full signed message with all attachments, at any time - even years
-  after ISDS would have deleted it from your schránka.
+  after ISDS would have deleted it from your schránka. The same ZFO can also
+  be taken to any Czech Point branch for *autorizovaná konverze*: they print
+  it out and stamp it as a legally-valid physical original, useful for court
+  documents carrying a *doložka právní moci* and anywhere a paper original
+  with official equivalence is required.
 
 ## What gets archived
 
