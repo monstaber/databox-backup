@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.npm/
+*.log
+.claude/
+
+# Secrets — defense in depth; no secret files should be committed
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+credentials.json
+client_id.json
+client_secret*.json
+oauth-token*.json
+google-credentials*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
