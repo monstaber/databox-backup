@@ -5,12 +5,12 @@
   "description": "Personal archiver for the Czech datová schránka (ISDS). Every 3 hours a GitHub Actions workflow pulls new/changed messages from ISDS and stores them (as signed ZFO + signed doručenka + a manifest sidecar) in Google Drive.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "build": "tsc",
     "lint": "eslint .",
-    "test": "node --test --test-reporter=spec \"dist/tests/**/*.test.js\"",
+    "test": "node --test --test-reporter=spec dist/tests/*.test.js",
     "start": "node dist/src/index.js",
     "bootstrap:google": "node dist/scripts/google-oauth-bootstrap.js",
     "verify": "npm run build && npm run lint && npm test && npm audit --audit-level=low"
@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.14.0",
-    "@types/node": "^20.17.0",
+    "@types/node": "^24.0.0",
     "eslint": "^9.14.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.14.0"

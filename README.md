@@ -176,7 +176,7 @@ After that the `0 */3 * * *` schedule takes over. Check in once a week or so.
 
 ## Local development
 
-Requires Node 20.
+Requires Node 24.
 
 ```
 npm install
