@@ -1,0 +1,49 @@
+name: archive
+
+on:
+  schedule:
+    # Every hour at the top of the hour, UTC. See README for the cost rationale.
+    - cron: '0 * * * *'
+  workflow_dispatch: {}
+
+# Default the job-level token to read-only. The archiver writes to Google Drive
+# via its own OAuth credential; no GitHub API write is needed.
+permissions:
+  contents: read
+
+# Queue overlapping runs instead of racing. Overlap is virtually impossible at
+# hourly cadence, but the guard is correct and cheap.
+concurrency:
+  group: isds-archiver
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run archiver
+        env:
+          ISDS_USERNAME: ${{ secrets.ISDS_USERNAME }}
+          ISDS_PASSWORD: ${{ secrets.ISDS_PASSWORD }}
+          ISDS_DBID: ${{ secrets.ISDS_DBID }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: node dist/src/index.js

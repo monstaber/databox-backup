@@ -1,0 +1,5 @@
+<redacted ZFO placeholder>
+Original: valid PKCS#7 CAdES envelope containing a signed data message
+with attachments (typically PDFs).
+<PDF here>
+Redacted for committed fixtures; the archiver produces real ZFOs at runtime.
