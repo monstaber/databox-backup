@@ -181,7 +181,7 @@ The dbID layer keeps each schránka's archive isolated, so you can point a secon
 
 ## ⚠️ Legal Disclaimer
 
-This project is provided under the terms of the MIT License and is made available “as is”, without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement.
+This project is provided under the terms of the PolyForm Noncommercial License 1.0.0 and is made available “as is”, without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement.
 
 By using this software, you acknowledge and agree that:
 
