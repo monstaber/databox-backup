@@ -90,8 +90,13 @@ npm run build
 npm run bootstrap:google
 ```
 
-A browser window opens for Google consent. After you approve, the script
-prints:
+A browser window opens for Google consent. You will see a narrow permission
+request - the archiver can only touch files it creates itself, never anything
+else in your Drive:
+
+![Google consent screen showing the drive.file scope: "See, edit, create, and delete only the specific Google Drive files you use with this app"](docs/consent.png)
+
+After you approve, the script prints:
 
 ```
 GOOGLE_OAUTH_REFRESH_TOKEN=1//0g...
