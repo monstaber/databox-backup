@@ -3,6 +3,7 @@
 Personal archiver for the Czech **datová schránka** (ISDS). Every hour a GitHub Actions workflow pulls new/changed messages from ISDS and stores them (as signed ZFO + signed doručenka) in Google Drive.
 
 ![Diagram: signed messages with attachments in ZFO format and signed delivery history sync from datové schránky into Google Drive](docs/sync.png)
+Note: This project is not affiliated with or endorsed by Google or Datové schránky (ISDS). All trademarks and logos are the property of their respective owners.
 
 **No data is retained** outside of the Google Drive folder you configure.
 
