@@ -69,7 +69,7 @@ Note: the username is tied to a specific schránka. If you hold multiple schrán
 
 1. Go to <https://console.cloud.google.com/>, create a project (any name).
 2. *APIs & Services => Library* => enable **Google Drive API**.
-3. *APIs & Services => OAuth consent screen* => *External* user type, fill the minimum: app name = `databox-backup`, user support email = yours, dev email = yours. Add your own Google account as a *Test user*. Do **not** publish the app - it can stay in "Testing" forever with the `drive.file` scope.
+3. *APIs & Services => OAuth consent screen* => *External* user type, fill the minimum: app name = `databox-backup`, user support email = yours, dev email = yours. Then click **Publish app** (*Push to production*) and confirm. `drive.file` is a non-sensitive scope so Google publishes immediately without a verification review. **This step is important**: apps left in *Testing* have refresh tokens that expire after 7 days regardless of scope, which silently breaks the scheduled archiver a week after setup. Publishing does not list the app in any marketplace or directory - the only practical effect is disabling the 7-day token timer. (If you would rather stay in *Testing*, add your Google account as a *Test user* and plan to re-bootstrap weekly.)
 4. *APIs & Services => Credentials => Create Credentials => OAuth client ID*. Application type = **Desktop app**. Note the client ID and secret.
 
 ### 3. Bootstrap the refresh token + Drive folder
@@ -154,7 +154,7 @@ npm run verify       # build + lint + test + audit, in one shot
 
 - **ISDS 2FA enforcement.** The Digitální a informační agentura has been pushing OTP-based 2FA for interactive DS access. If it becomes mandatory for non-interactive / API auth too, `Authorization: Basic ...` against `/DS/dx` and `/DS/dz` will start returning an auth failure on every run and GitHub Actions will email you about the red runs. **Workaround: switch to commercial client-certificate (mTLS) auth.** This will be implemented in this repository if ISDS makes this change.
 
-- **Google refresh-token rot.** With the `drive.file` scope (non-sensitive), refresh tokens issued to a "Testing" OAuth app should not expire on the typical 7-day timer that applies to sensitive scopes. If a token is revoked anyway, re-run `npm run bootstrap:google` and replace the `GOOGLE_OAUTH_REFRESH_TOKEN` secret.
+- **Google refresh-token rot.** OAuth apps left in *Testing* publishing status expire refresh tokens after 7 days regardless of scope - this silently breaks the scheduled archiver a week after setup. Fix: *Publish* the OAuth consent screen (step 3 of one-time setup). `drive.file` is non-sensitive so publishing requires no verification and does not list the app anywhere public. After publishing, re-run `npm run bootstrap:google` and replace the `GOOGLE_OAUTH_REFRESH_TOKEN` secret with the new value.
 
 - **ISDS password rotation.** Set *Platnost hesla: Trvalá* or the archiver will silently die 90 days after setup.
 
