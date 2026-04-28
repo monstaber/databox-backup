@@ -39,9 +39,17 @@ jobs:
 
       - name: Run archiver
         env:
+          ISDS_DBID: ${{ secrets.ISDS_DBID }}
+          # ISDS authentication. The archiver picks the auth path by env-var
+          # presence: PEM pair wins, then PFX, else username+password. Set
+          # whichever pair you use; leave the others unset (or as empty
+          # secrets — empty values are treated as absent).
+          ISDS_CERT_PEM_BASE64: ${{ secrets.ISDS_CERT_PEM_BASE64 }}
+          ISDS_KEY_PEM_BASE64: ${{ secrets.ISDS_KEY_PEM_BASE64 }}
+          ISDS_CERT_PFX_BASE64: ${{ secrets.ISDS_CERT_PFX_BASE64 }}
+          ISDS_CERT_PFX_PASSPHRASE: ${{ secrets.ISDS_CERT_PFX_PASSPHRASE }}
           ISDS_USERNAME: ${{ secrets.ISDS_USERNAME }}
           ISDS_PASSWORD: ${{ secrets.ISDS_PASSWORD }}
-          ISDS_DBID: ${{ secrets.ISDS_DBID }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
