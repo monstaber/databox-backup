@@ -10,41 +10,19 @@ import {
   parseSignedDownloadResponse,
   type DmStatus,
 } from './isds-xml.js';
+import type { IsdsTransport } from './transport.js';
 import type { ListedMessage, MessageDirection } from './types.js';
 
 type IsdsService = 'info' | 'operations';
 
 export class IsdsClient {
-  private readonly authHeader: string;
-
   constructor(
     private readonly endpoints: IsdsEndpoints,
-    username: string,
-    password: string,
-  ) {
-    this.authHeader =
-      'Basic ' + Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
-  }
+    private readonly transport: IsdsTransport,
+  ) {}
 
-  private async call(service: IsdsService, envelope: string): Promise<string> {
-    const endpoint = this.endpoints[service];
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: '""',
-        Authorization: this.authHeader,
-        Accept: 'text/xml',
-      },
-      body: envelope,
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(
-        `ISDS HTTP ${res.status.toString()} ${res.statusText} — ${truncate(text)}`,
-      );
-    }
-    return text;
+  private call(service: IsdsService, envelope: string): Promise<string> {
+    return this.transport.call(this.endpoints[service], envelope);
   }
 
   async listMessages(
@@ -96,8 +74,4 @@ function assertSuccess(status: DmStatus, ctx: string): void {
   if (status.code !== '0000') {
     throw new Error(`ISDS ${ctx} failed: [${status.code}] ${status.message}`);
   }
-}
-
-function truncate(s: string, n = 400): string {
-  return s.length > n ? s.slice(0, n - 3) + '...' : s;
 }

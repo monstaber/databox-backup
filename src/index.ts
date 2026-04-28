@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
-import { loadConfig } from './config.js';
+import { inspectCertCred } from './cert-info.js';
+import { loadConfig, type IsdsAuth } from './config.js';
 import { sha256Hex } from './crypto.js';
 import { Drive } from './drive.js';
 import { GoogleAuth } from './google-auth.js';
@@ -7,6 +8,11 @@ import { IsdsClient } from './isds.js';
 import { log, setVerbose } from './log.js';
 import { formatDorucenkaFilename, formatMessageFilename } from './naming.js';
 import { loadStateStore, saveStateStore, type StateStore } from './state.js';
+import {
+  makeBasicAuthTransport,
+  makeCertAuthTransport,
+  type IsdsTransport,
+} from './transport.js';
 import {
   isTerminalStatus,
   type IndexEntry,
@@ -31,9 +37,10 @@ async function main(): Promise<number> {
     cfg.google.refreshToken,
   );
   const drive = new Drive(auth);
-  const isds = new IsdsClient(cfg.isds.endpoints, cfg.isds.username, cfg.isds.password);
+  const transport = await buildIsdsTransport(cfg.isds.auth);
+  const isds = new IsdsClient(cfg.isds.endpoints, transport);
 
-  log.info('starting run', { dbId: cfg.isds.dbId });
+  log.info('starting run', { dbId: cfg.isds.dbId, authMode: cfg.isds.auth.mode });
 
   const store = await loadStateStore(drive, cfg.drive.rootFolderId, cfg.isds.dbId);
 
@@ -211,6 +218,32 @@ async function refreshDorucenka(
 
   log.info('refreshed dorucenka', { dmId: m.dmId, status: m.dmStatus });
   return true;
+}
+
+async function buildIsdsTransport(auth: IsdsAuth): Promise<IsdsTransport> {
+  if (auth.mode === 'basic') {
+    return makeBasicAuthTransport(auth.username, auth.password);
+  }
+  const info = await inspectCertCred(auth.cred);
+  if (info) {
+    log.info('isds: cert', {
+      credKind: auth.cred.kind,
+      subject: info.subject.replace(/\n/g, '; '),
+      issuer: info.issuer.replace(/\n/g, '; '),
+      validTo: info.validTo,
+      daysUntilExpiry: info.daysUntilExpiry,
+    });
+    if (info.daysUntilExpiry < 30) {
+      log.warn('isds: client cert expires soon', {
+        daysUntilExpiry: info.daysUntilExpiry,
+      });
+    }
+  } else {
+    log.warn('isds: could not inspect client cert (continuing)', {
+      credKind: auth.cred.kind,
+    });
+  }
+  return makeCertAuthTransport(auth.cred);
 }
 
 function folderSegments(dbId: string, m: ListedMessage): string[] {

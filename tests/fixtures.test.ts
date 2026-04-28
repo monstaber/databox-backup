@@ -143,86 +143,78 @@ describe('fixtures: cross-file consistency', () => {
   });
 });
 
-// ---------- end-to-end with mocked transport ----------
+// ---------- end-to-end with a mocked IsdsTransport ----------
 
-describe('IsdsClient with mocked fetch, driven by fixtures', () => {
+describe('IsdsClient with mocked transport, driven by fixtures', () => {
   const endpoints = {
     info: 'https://mock.example.invalid/DS/dx',
     operations: 'https://mock.example.invalid/DS/dz',
   };
 
-  function withStubbedFetch(
-    handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
-    body: () => Promise<void>,
-  ): Promise<void> {
-    const original = globalThis.fetch;
-    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      return Promise.resolve(handler(url, init));
-    }) as typeof globalThis.fetch;
-    return body().finally(() => {
-      globalThis.fetch = original;
-    });
+  // Records each (endpoint, envelope) call and returns whatever the handler
+  // produces. The IsdsClient receives an opaque IsdsTransport, so this is
+  // the only seam we need to swap in a test.
+  function mockTransport(
+    handler: (endpoint: string, envelope: string) => string | Promise<string>,
+  ): {
+    transport: { call: (endpoint: string, envelope: string) => Promise<string> };
+    calls: { endpoint: string; envelope: string }[];
+  } {
+    const calls: { endpoint: string; envelope: string }[] = [];
+    return {
+      transport: {
+        call: (endpoint: string, envelope: string): Promise<string> => {
+          calls.push({ endpoint, envelope });
+          return Promise.resolve(handler(endpoint, envelope));
+        },
+      },
+      calls,
+    };
   }
 
   it('listMessages parses list_received.xml via the full client pipeline', async () => {
     const fixture = readFileSync(resolve(FIXTURES_DIR, 'list_received.xml'), 'utf8');
-    await withStubbedFetch(
-      (url) => {
-        assert.equal(url, endpoints.info, 'list call targets the info endpoint');
-        return new Response(fixture, {
-          status: 200,
-          headers: { 'Content-Type': 'text/xml' },
-        });
-      },
-      async () => {
-        const client = new IsdsClient(endpoints, 'user', 'pass');
-        const messages = await client.listMessages(
-          'received',
-          '2026-01-01T00:00:00.000',
-          '2026-04-17T00:00:00.000',
-        );
-        assert.equal(messages.length, 2);
-        assert.deepEqual(
-          messages.map((m) => m.dmId).sort(),
-          ['1313131313', '1313131314'],
-        );
-        for (const m of messages) {
-          assert.equal(m.direction, 'received');
-          assert.equal(m.dmSender, 'Johnny Appleseed Org');
-          assert.equal(m.dmRecipient, 'Jane Doe Ltd');
-          assert.equal(m.dmAnnotation, 'Dummy subject');
-          assert.equal(m.dbIDRecipient, 'aaa0000');
-        }
-      },
+    const { transport, calls } = mockTransport((endpoint) => {
+      assert.equal(endpoint, endpoints.info, 'list call targets the info endpoint');
+      return fixture;
+    });
+    const client = new IsdsClient(endpoints, transport);
+    const messages = await client.listMessages(
+      'received',
+      '2026-01-01T00:00:00.000',
+      '2026-04-17T00:00:00.000',
     );
+    assert.equal(calls.length, 1);
+    assert.equal(messages.length, 2);
+    assert.deepEqual(
+      messages.map((m) => m.dmId).sort(),
+      ['1313131313', '1313131314'],
+    );
+    for (const m of messages) {
+      assert.equal(m.direction, 'received');
+      assert.equal(m.dmSender, 'Johnny Appleseed Org');
+      assert.equal(m.dmRecipient, 'Jane Doe Ltd');
+      assert.equal(m.dmAnnotation, 'Dummy subject');
+      assert.equal(m.dbIDRecipient, 'aaa0000');
+    }
   });
 
   it('listMessages parses list_sent.xml and routes to the info endpoint', async () => {
     const fixture = readFileSync(resolve(FIXTURES_DIR, 'list_sent.xml'), 'utf8');
-    await withStubbedFetch(
-      (url) => {
-        assert.equal(url, endpoints.info);
-        return new Response(fixture, { status: 200 });
-      },
-      async () => {
-        const client = new IsdsClient(endpoints, 'user', 'pass');
-        const messages = await client.listMessages('sent', 'a', 'b');
-        assert.deepEqual(
-          messages.map((m) => m.dmId).sort(),
-          ['1313131315', '1313131316'],
-        );
-        for (const m of messages) {
-          assert.equal(m.direction, 'sent');
-          assert.equal(m.dbIDSender, 'aaa0000');
-        }
-      },
+    const { transport } = mockTransport((endpoint) => {
+      assert.equal(endpoint, endpoints.info);
+      return fixture;
+    });
+    const client = new IsdsClient(endpoints, transport);
+    const messages = await client.listMessages('sent', 'a', 'b');
+    assert.deepEqual(
+      messages.map((m) => m.dmId).sort(),
+      ['1313131315', '1313131316'],
     );
+    for (const m of messages) {
+      assert.equal(m.direction, 'sent');
+      assert.equal(m.dbIDSender, 'aaa0000');
+    }
   });
 
   it('downloadSignedMessage returns the byte-identical .zfo content', async () => {
@@ -233,17 +225,13 @@ describe('IsdsClient with mocked fetch, driven by fixtures', () => {
     const expected = readFileSync(
       resolve(FIXTURES_DIR, 'msg_1313131313_received.zfo'),
     );
-    await withStubbedFetch(
-      (url) => {
-        assert.equal(url, endpoints.operations, 'download targets operations endpoint');
-        return new Response(soap, { status: 200 });
-      },
-      async () => {
-        const client = new IsdsClient(endpoints, 'user', 'pass');
-        const zfo = await client.downloadSignedMessage('received', '1313131313');
-        assert.equal(zfo.compare(expected), 0);
-      },
-    );
+    const { transport } = mockTransport((endpoint) => {
+      assert.equal(endpoint, endpoints.operations, 'download targets operations endpoint');
+      return soap;
+    });
+    const client = new IsdsClient(endpoints, transport);
+    const zfo = await client.downloadSignedMessage('received', '1313131313');
+    assert.equal(zfo.compare(expected), 0);
   });
 
   it('downloadSignedDeliveryInfo returns the decoded dorucenka bytes', async () => {
@@ -254,36 +242,13 @@ describe('IsdsClient with mocked fetch, driven by fixtures', () => {
     const expected = readFileSync(
       resolve(FIXTURES_DIR, 'msg_1313131313_received.dorucenka.zfo'),
     );
-    await withStubbedFetch(
-      (url) => {
-        assert.equal(url, endpoints.info, 'dorucenka targets info endpoint');
-        return new Response(soap, { status: 200 });
-      },
-      async () => {
-        const client = new IsdsClient(endpoints, 'user', 'pass');
-        const zfo = await client.downloadSignedDeliveryInfo('1313131313');
-        assert.equal(zfo.compare(expected), 0);
-      },
-    );
-  });
-
-  it('sends Basic auth with the supplied credentials', async () => {
-    const fixture = readFileSync(resolve(FIXTURES_DIR, 'list_received.xml'), 'utf8');
-    let capturedAuth: string | null = null;
-    await withStubbedFetch(
-      (_url, init) => {
-        const headers = new Headers(init?.headers);
-        capturedAuth = headers.get('authorization');
-        return new Response(fixture, { status: 200 });
-      },
-      async () => {
-        const client = new IsdsClient(endpoints, 'testuser', 's3cret');
-        await client.listMessages('received', 'a', 'b');
-      },
-    );
-    const expected =
-      'Basic ' + Buffer.from('testuser:s3cret', 'utf8').toString('base64');
-    assert.equal(capturedAuth, expected);
+    const { transport } = mockTransport((endpoint) => {
+      assert.equal(endpoint, endpoints.info, 'dorucenka targets info endpoint');
+      return soap;
+    });
+    const client = new IsdsClient(endpoints, transport);
+    const zfo = await client.downloadSignedDeliveryInfo('1313131313');
+    assert.equal(zfo.compare(expected), 0);
   });
 
   it('surfaces non-zero dmStatusCode as an Error containing the status code', async () => {
@@ -298,15 +263,11 @@ describe('IsdsClient with mocked fetch, driven by fixtures', () => {
   </GetListOfReceivedMessagesResponse>
 </soap:Body>
 </soap:Envelope>`;
-    await withStubbedFetch(
-      () => new Response(errorXml, { status: 200 }),
-      async () => {
-        const client = new IsdsClient(endpoints, 'u', 'p');
-        await assert.rejects(
-          () => client.listMessages('received', 'a', 'b'),
-          (err: unknown) => err instanceof Error && err.message.includes('1212'),
-        );
-      },
+    const { transport } = mockTransport(() => errorXml);
+    const client = new IsdsClient(endpoints, transport);
+    await assert.rejects(
+      () => client.listMessages('received', 'a', 'b'),
+      (err: unknown) => err instanceof Error && err.message.includes('1212'),
     );
   });
 });

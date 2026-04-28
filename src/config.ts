@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -8,19 +9,27 @@ export interface IsdsEndpoints {
   readonly operations: string;
 }
 
+// Two auth modes against ISDS. The /cert/DS/... endpoints accept only mTLS
+// with a registered system certificate (no Authorization header); the /DS/...
+// endpoints accept only HTTP Basic. Selection is by env-var presence: if a
+// cert credential is provided (PEM-pair OR PFX) it wins, with no fallback
+// to credentials. See loadIsdsConfig for the precedence rules.
+export type CertCred =
+  | { readonly kind: 'pem'; readonly cert: Buffer; readonly key: Buffer }
+  | { readonly kind: 'pfx'; readonly pfx: Buffer; readonly passphrase: string | undefined };
+
+export type IsdsAuth =
+  | { readonly mode: 'basic'; readonly username: string; readonly password: string }
+  | { readonly mode: 'cert'; readonly cred: CertCred };
+
 export interface Config {
   readonly isds: {
-    // Login code assigned to you as a user of a specific schránka
-    // (6-12 lowercase alphanumeric chars, e.g. "abcde1"). NOT the same as the
-    // schránka's own dbID — one physical person can hold multiple schránky
-    // and gets a separate username for each.
-    readonly username: string;
-    readonly password: string;
     // The schránka's own identifier (7 chars, e.g. "xyz1234"). Used for:
     // (a) self-documentation in folder paths on Drive,
-    // (b) runtime sanity check that the credentials opened the schránka we
-    //     expected. NOT sent to ISDS — auth scope handles routing.
+    // (b) runtime sanity check that the credentials/cert opened the schránka
+    //     we expected. NOT sent to ISDS — auth scope handles routing.
     readonly dbId: string;
+    readonly auth: IsdsAuth;
     readonly endpoints: IsdsEndpoints;
   };
   readonly google: {
@@ -38,14 +47,29 @@ export interface Config {
   };
 }
 
+// Endpoint host & path differs by auth mode: cert auth requires the ws1c host
+// AND a /cert path prefix on top of the per-service postfix. Both differences
+// are mandatory — rewriting only the path is not sufficient.
 const ISDS_ENDPOINTS = {
   production: {
-    info: 'https://ws1.mojedatovaschranka.cz/DS/dx',
-    operations: 'https://ws1.mojedatovaschranka.cz/DS/dz',
+    basic: {
+      info: 'https://ws1.mojedatovaschranka.cz/DS/dx',
+      operations: 'https://ws1.mojedatovaschranka.cz/DS/dz',
+    },
+    cert: {
+      info: 'https://ws1c.mojedatovaschranka.cz/cert/DS/dx',
+      operations: 'https://ws1c.mojedatovaschranka.cz/cert/DS/dz',
+    },
   },
   test: {
-    info: 'https://ws1.czebox.cz/DS/dx',
-    operations: 'https://ws1.czebox.cz/DS/dz',
+    basic: {
+      info: 'https://ws1.czebox.cz/DS/dx',
+      operations: 'https://ws1.czebox.cz/DS/dz',
+    },
+    cert: {
+      info: 'https://ws1c.czebox.cz/cert/DS/dx',
+      operations: 'https://ws1c.czebox.cz/cert/DS/dz',
+    },
   },
 } as const;
 
@@ -77,17 +101,75 @@ function required(name: string, env: NodeJS.ProcessEnv): string {
   return v;
 }
 
+function nonEmpty(name: string, env: NodeJS.ProcessEnv): string | undefined {
+  const v = env[name];
+  return v === undefined || v === '' ? undefined : v;
+}
+
+function decodeBase64(b64: string, varName: string): Buffer {
+  // Strip whitespace so that accidentally-wrapped values still decode. Empty
+  // input has been ruled out before this is called.
+  const stripped = b64.replace(/\s+/g, '');
+  // Buffer.from is permissive; check the round-trip to detect corruption.
+  const buf = Buffer.from(stripped, 'base64');
+  if (
+    buf.length === 0 ||
+    buf.toString('base64').replace(/=+$/, '') !== stripped.replace(/=+$/, '')
+  ) {
+    throw new Error(`${varName} is not valid base64 (decoded round-trip mismatch)`);
+  }
+  return buf;
+}
+
+function loadCertCred(env: NodeJS.ProcessEnv): CertCred | undefined {
+  // PEM pair takes precedence over PFX. The two PEM vars are required as a
+  // pair — providing one without the other is a configuration error.
+  const certB64 = nonEmpty('ISDS_CERT_PEM_BASE64', env);
+  const keyB64 = nonEmpty('ISDS_KEY_PEM_BASE64', env);
+  if (certB64 !== undefined && keyB64 !== undefined) {
+    return {
+      kind: 'pem',
+      cert: decodeBase64(certB64, 'ISDS_CERT_PEM_BASE64'),
+      key: decodeBase64(keyB64, 'ISDS_KEY_PEM_BASE64'),
+    };
+  }
+  if (certB64 !== undefined || keyB64 !== undefined) {
+    throw new Error(
+      'ISDS_CERT_PEM_BASE64 and ISDS_KEY_PEM_BASE64 must be set together',
+    );
+  }
+  const pfxB64 = nonEmpty('ISDS_CERT_PFX_BASE64', env);
+  if (pfxB64 !== undefined) {
+    return {
+      kind: 'pfx',
+      pfx: decodeBase64(pfxB64, 'ISDS_CERT_PFX_BASE64'),
+      passphrase: nonEmpty('ISDS_CERT_PFX_PASSPHRASE', env),
+    };
+  }
+  return undefined;
+}
+
+export function loadIsdsAuth(env: NodeJS.ProcessEnv = process.env): IsdsAuth {
+  const cred = loadCertCred(env);
+  if (cred !== undefined) return { mode: 'cert', cred };
+  return {
+    mode: 'basic',
+    username: required('ISDS_USERNAME', env),
+    password: required('ISDS_PASSWORD', env),
+  };
+}
+
 // Load only the ISDS portion of the config. Kept separate from the full
 // loadConfig so that ISDS-only entry points don't need to demand Google
 // credentials.
 export function loadIsdsConfig(): Config['isds'] {
   loadDotenvLocalInto(process.env);
   const which = process.env['ISDS_ENV']?.toLowerCase() === 'test' ? 'test' : 'production';
+  const auth = loadIsdsAuth(process.env);
   return {
-    username: required('ISDS_USERNAME', process.env),
-    password: required('ISDS_PASSWORD', process.env),
     dbId: required('ISDS_DBID', process.env),
-    endpoints: ISDS_ENDPOINTS[which],
+    auth,
+    endpoints: ISDS_ENDPOINTS[which][auth.mode],
   };
 }
 
