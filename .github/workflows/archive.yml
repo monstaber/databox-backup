@@ -2,8 +2,9 @@ name: archive
 
 on:
   schedule:
-    # Every hour at the top of the hour, UTC. See README for the cost rationale.
-    - cron: '0 * * * *'
+    # Every 30 minutes (UTC). See README for the cost rationale and for
+    # notes on GitHub's notoriously sloppy scheduled-run honoring.
+    - cron: '*/30 * * * *'
   workflow_dispatch: {}
 
 # Default the job-level token to read-only. The archiver writes to Google Drive

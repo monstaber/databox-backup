@@ -44,8 +44,13 @@ async function main(): Promise<number> {
 
   const store = await loadStateStore(drive, cfg.drive.rootFolderId, cfg.isds.dbId);
 
-  const to = new Date();
-  const from = new Date(to.getTime() - cfg.run.lookbackDays * 86_400_000);
+  // Belt: format `to` in explicit Europe/Prague time (what ISDS interprets
+  // bare-no-TZ timestamps as). Suspenders: push the upper bound +1 day so a
+  // remaining DST/clock-skew quirk can't drop a message that arrived in the
+  // last few minutes from the list response.
+  const now = Date.now();
+  const to = new Date(now + 86_400_000);
+  const from = new Date(now - cfg.run.lookbackDays * 86_400_000);
   const fromISO = isdsTimestamp(from);
   const toISO = isdsTimestamp(to);
 
@@ -269,9 +274,24 @@ function warnIfDbIdMismatch(listed: readonly ListedMessage[], expected: string):
   });
 }
 
-function isdsTimestamp(d: Date): string {
-  // ISDS expects ISO-like timestamps without 'Z' suffix.
-  return d.toISOString().replace('Z', '');
+// ISDS interprets bare-no-TZ timestamps in dmFromTime/dmToTime as Europe/
+// Prague local time. The previous implementation `d.toISOString().replace('Z',
+// '')` produced a UTC-wall-clock string that ISDS then misread as Prague
+// local — a DST-dependent 1-2h skew, silently dropping messages that arrived
+// inside that gap. Format explicitly in the Prague zone instead.
+export function isdsTimestamp(d: Date): string {
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Prague',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`;
 }
 
 function errMsg(e: unknown): string {

@@ -1,6 +1,6 @@
 # databox-backup
 
-Personal archiver for the Czech **datová schránka** (ISDS). Every hour a GitHub Actions workflow pulls new/changed messages from ISDS and stores them (as signed ZFO + signed doručenka) in Google Drive.
+Personal archiver for the Czech **datová schránka** (ISDS). Every 30 minutes a GitHub Actions workflow pulls new/changed messages from ISDS and stores them (as signed ZFO + signed doručenka) in Google Drive.
 
 Written completely in Typescript, only dependency is fast-xml-parser.
 
@@ -32,7 +32,7 @@ To run this yourself you need your own **private** copy of the repo (see the not
 | Item | Annual cost |
 |---|---|
 | ISDS API | 0 CZK |
-| GitHub Actions (your own private copy of this repo with your 7 secrets; ~720 min/mo of 2 000 free - each run typically finishes in ~30 seconds even when archiving 10+ messages with attachments, and GitHub rounds every run up to a whole billable minute) | 0 CZK |
+| GitHub Actions on your private copy of this repo; ~1 440 min/mo (every 30 min × 24 × 30) of the 2 000 free - in practice fewer because GitHub silently skips a non-trivial fraction of scheduled runs, see *Architecture* below. Each run typically finishes in ~30 seconds even when archiving 10+ messages with attachments, and GitHub rounds every run up to a whole billable minute. | 0 CZK |
 | Google Drive (15 GB free; usage typically < 1 GB / year) | 0 CZK |
 | Google Cloud (OAuth issuance only; no billable APIs) | 0 CZK |
 | **Total** | **0 CZK / year** |
@@ -47,7 +47,7 @@ GitHub does not allow a direct *Fork* from a public repo into a private one. Use
 
 ```
 GitHub Actions (private)  =>  Node 24 / TypeScript job  =>  ISDS SOAP  (username+password)
-    cron: 0 * * * *                                     =>  Google Drive REST v3 (OAuth, drive.file scope)
+    cron: */30 * * * *                                  =>  Google Drive REST v3 (OAuth, drive.file scope)
 ```
 
 No self-hosted server. No persistent runtime state outside Drive.
@@ -190,7 +190,7 @@ Verify:
 - `_state/index.json` exists and has one entry per archived message.
 - Open any `.zfo` in Datovka (desktop) - the signature must validate.
 
-After that the `0 * * * *` schedule takes over. Check in once a week or so.
+After that the `*/30 * * * *` schedule takes over. Check in once a week or so.
 
 ## Local development
 
