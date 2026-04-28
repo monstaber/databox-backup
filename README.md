@@ -56,17 +56,24 @@ Absolutely minimal dependencies, 0 NPM vulnerabilities, unit testing implemented
 
 ## One-time setup
 
-### 1. Prepare your datová schránka
+### 1. Authenticate your schránka with a system certificate
 
-Log into the DS web UI => *Nastavení => Přihlášení => Platnost hesla*. Set to **Trvalá**. (Default is 90 days - the archiver would silently break on rotation.)
+The recommended (and long-term) auth path is a **system certificate** (*systémový certifikát*) registered against your schránka. mTLS via the cert replaces username + password for all SOAP calls.
 
-While you're there, grab the three values you'll need:
+**Get a system cert.** Any qualified Czech CA can issue one - PostSignum (Česká pošta), I.CA, or eIdentita.cz. The output is a public certificate + private key, usually delivered as a PKCS#12 (`.p12` / `.pfx`) bundle with a passphrase.
 
-- **Uživatelské jméno** - your login username (6-12 lowercase alphanumeric chars, e.g. `abcde1`). This is the value for `ISDS_USERNAME`.
-- **Heslo** - password for `ISDS_PASSWORD`.
-- **ID schránky** - the schránka's own identifier (7 chars, e.g. `xyz1234`), shown on the home screen or in *Nastavení => Informace o schránce*. This is the value for `ISDS_DBID`.
+**Register the public cert with your schránka.** In the DS web UI: *Nastavení → Externí aplikace → Certifikát spisové služby → Přidat certifikát*. Paste the cert in PEM form. From this point on, ISDS will accept that certificate during the TLS handshake when the archiver authenticates.
 
-Note: the username is tied to a specific schránka. If you hold multiple schránky (personal + company, for instance), each has its own username. This archiver handles one schránka at a time - run a second workflow instance with a different repo's secrets if you need to back up more than one.
+**Grab your dbID.** It's the schránka's own 7-character identifier (e.g. shown as *ID schránky* on the home screen or under *Nastavení → Informace o schránce*). The archiver uses it to namespace the archive in your Drive folder and to sanity-check that the credential opens the schránka you expected.
+
+Why cert auth:
+
+- **ISDS is enforcing OTP-based 2FA on interactive logins.** That path will eventually stop working for non-interactive use; cert auth is unaffected.
+- **Doručenky record EV13 instead of EV11.** Messages pulled by the archiver carry the event "Přihlásila se elektronická aplikace za pomocí systémového certifikátu" — a clean audit trail that distinguishes automated accesses from your personal logins.
+
+This archiver handles one schránka at a time. If you hold multiple schránky, run a second workflow instance with a different repo's secrets and a different cert.
+
+Username + password auth is still supported as a fallback — see the footnote at the end of step 4.
 
 ### 2. Create an OAuth client in Google Cloud
 
@@ -116,15 +123,61 @@ Append both to `.env.local` for local dev.
 
 ### 4. Configure GitHub repo secrets
 
-In your private GitHub repo, *Settings => Secrets and variables => Actions => New repository secret*, add seven secrets with exactly these names:
+In your private GitHub repo, *Settings → Secrets and variables → Actions → New repository secret*, add the secrets below. The archiver picks the auth path by env-var presence — PEM pair > PFX > username + password — so you only need to populate one auth path's secrets; leave the others unset.
 
-- `ISDS_USERNAME`
-- `ISDS_PASSWORD`
+**Schránka identification + Google Drive (always required):**
+
 - `ISDS_DBID`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_OAUTH_REFRESH_TOKEN`
 - `DRIVE_FOLDER_ID`
+
+**ISDS auth — preferred path: system cert as PEM pair.** The cleanest path; sidesteps any quirks with PFX encryption (some CA-issued PFX bundles use legacy 3DES that Node 24's bundled OpenSSL 3.x rejects). If your cert came as a `.p12`, extract:
+
+```sh
+openssl pkcs12 -in cert.p12 -clcerts -nokeys -out cert.pem
+openssl pkcs12 -in cert.p12 -nocerts  -nodes  -out key.pem
+```
+
+Then base64-encode each as a single line and paste into the matching GitHub secret:
+
+```sh
+# macOS
+base64 < cert.pem | tr -d '\n' | pbcopy   # paste into ISDS_CERT_PEM_BASE64
+base64 < key.pem  | tr -d '\n' | pbcopy   # paste into ISDS_KEY_PEM_BASE64
+
+# Linux
+base64 -w0 cert.pem | xclip -selection clipboard
+base64 -w0 key.pem  | xclip -selection clipboard
+```
+
+Add both as GitHub secrets:
+
+- `ISDS_CERT_PEM_BASE64`
+- `ISDS_KEY_PEM_BASE64`
+
+**ISDS auth — alternative: system cert as PFX bundle.** Skip if you used the PEM path above. Same cert, fed in as the original PKCS#12 file:
+
+```sh
+base64 < cert.p12 | tr -d '\n' | pbcopy   # paste into ISDS_CERT_PFX_BASE64
+```
+
+Add:
+
+- `ISDS_CERT_PFX_BASE64`
+- `ISDS_CERT_PFX_PASSPHRASE`
+
+If your run errors with `mac verify failure`, your PFX is encrypted with legacy 3DES that the bundled OpenSSL won't decrypt. Switch to the PEM pair above.
+
+#### Footnote: username + password (deprecated, plan to migrate)
+
+If you can't (yet) get a system certificate, the archiver also accepts HTTP Basic auth:
+
+- `ISDS_USERNAME` — your DS login (*Uživatelské jméno*, 6-12 lowercase alphanumeric chars; tied to one specific schránka).
+- `ISDS_PASSWORD` — your DS password. Set *Nastavení → Přihlášení → Platnost hesla = Trvalá* in the DS web UI or the archiver breaks 90 days after setup when ISDS expires the password.
+
+This path is on its way out. ISDS is enforcing OTP-based 2FA for interactive logins, which will eventually break HTTP Basic against `/DS/dx` and `/DS/dz` for non-interactive use. It's also a worse security posture than a registered system cert: a long-lived password sitting in CI vs. a cert you can revoke centrally and which carries no human-impersonation rights. Migrate when you can.
 
 ### 5. First run
 
@@ -155,11 +208,13 @@ npm run verify       # build + lint + test + audit, in one shot
 
 ## Known risks
 
-- **ISDS 2FA enforcement.** The Digitální a informační agentura has been pushing OTP-based 2FA for interactive DS access. If it becomes mandatory for non-interactive / API auth too, `Authorization: Basic ...` against `/DS/dx` and `/DS/dz` will start returning an auth failure on every run and GitHub Actions will email you about the red runs. **Workaround: switch to commercial client-certificate (mTLS) auth.** This will be implemented in this repository if ISDS makes this change.
+- **ISDS 2FA enforcement.** ISDS is enforcing OTP-based 2FA on interactive logins. If you're using the username + password fallback, plan to migrate to system-certificate auth before that path stops working for non-interactive use. The cert path is fully implemented (see step 1 of *One-time setup*).
+
+- **System certificate expiry.** CA-issued system certs typically expire after 1-2 years. The archiver logs cert subject and `daysUntilExpiry` on every run and warns at < 30 days. When yours nears expiry: get a new cert, re-register it under *Nastavení → Externí aplikace → Certifikát spisové služby*, and update the `ISDS_CERT_PEM_BASE64` / `ISDS_KEY_PEM_BASE64` (or PFX) GitHub secrets.
 
 - **Google refresh-token rot.** OAuth apps left in *Testing* publishing status expire refresh tokens after 7 days regardless of scope - this silently breaks the scheduled archiver a week after setup. Fix: *Publish* the OAuth consent screen (step 3 of one-time setup). `drive.file` is non-sensitive so publishing requires no verification and does not list the app anywhere public. After publishing, re-run `npm run bootstrap:google` and replace the `GOOGLE_OAUTH_REFRESH_TOKEN` secret with the new value.
 
-- **ISDS password rotation.** Set *Platnost hesla: Trvalá* or the archiver will silently die 90 days after setup.
+- **ISDS password rotation.** Only relevant on the deprecated username + password path. Set *Platnost hesla: Trvalá* in the DS web UI or the archiver will silently die 90 days after setup.
 
 - **Drive folder deletion by the user.** The app can only see files it created. If you delete the state folder in Drive, the next run will re-archive everything from scratch (duplicates if the originals were not actually deleted).
 
@@ -208,7 +263,11 @@ The author(s) of this project:
 
 **"no refresh_token returned" from the bootstrap script** - your Google account has previously granted consent to this OAuth client. Revoke it at <https://myaccount.google.com/permissions> and re-run the bootstrap.
 
-**ISDS returns dmStatusCode 1212 on login** - username/password invalid. Check the DS web UI still accepts the same credentials interactively. If your heslo expired, reset it and then *Nastavení => Přihlášení => Platnost hesla => Trvalá* to prevent recurrence.
+**`mac verify failure` on PFX cert auth** - Node 24's bundled OpenSSL 3.x can't decrypt your PFX (likely encrypted with legacy 3DES, common from older CA tooling). Switch to the PEM-pair path: `openssl pkcs12 -in cert.p12 -clcerts -nokeys -out cert.pem` and `openssl pkcs12 -in cert.p12 -nocerts -nodes -out key.pem`, then base64-encode each and set `ISDS_CERT_PEM_BASE64` / `ISDS_KEY_PEM_BASE64` instead.
+
+**ISDS: client certificate rejected by server** - the cert was reachable but ISDS refused it. Most common: the cert hasn't been registered against your schránka, or registration was for a different schránka than `ISDS_DBID`. Re-check *Nastavení → Externí aplikace → Certifikát spisové služby*. Less common: cert expired (run logs `daysUntilExpiry`), or cert was issued by a CA that ISDS doesn't trust.
+
+**ISDS returns dmStatusCode 1212 on login** - username/password invalid (only relevant on the deprecated basic-auth path). Check the DS web UI still accepts the same credentials interactively. If your heslo expired, reset it and then *Nastavení → Přihlášení → Platnost hesla → Trvalá* to prevent recurrence. Or migrate to cert auth.
 
 **ISDS returns 0003 (LIMIT exceeded) from a list call** - should not happen at a personal-user volume, but the client paginates with offset so it will recover on subsequent pages automatically.
 
